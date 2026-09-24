@@ -1,0 +1,16 @@
+{
+  "type": "object",
+  "properties": {
+    "answer": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "answer",
+    "source"
+  ],
+  "additionalProperties": false
+}
