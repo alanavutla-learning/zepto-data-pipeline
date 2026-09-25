@@ -1,14 +1,6 @@
 import requests
-<<<<<<< HEAD
 
-url = "https://www.zepto.com/"
 
-response = requests.get(url)
-
-print("Status code:", response.status_code)
-print("Page length:", len(response.text))
-=======
-#import pandas as pd
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 def scrape_books():
@@ -154,4 +146,3 @@ df_raw.to_csv(
     "data_pipeline/data/raw/books_raw.csv",
     index=False
 )'''
->>>>>>> feature/data-pipeline
