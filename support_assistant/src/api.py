@@ -5,11 +5,14 @@ from fastapi import FastAPI, Body, HTTPException
 from jsonschema import validate
 
 from .graph import build_graph
+from .schemas import SupportResponse
+from .vector_store import create_vector_store
 
 
 app = FastAPI(
     title="Zepto Support Assistant"
 )
+create_vector_store()
 
 graph = build_graph()
 
@@ -30,7 +33,7 @@ def home():
     }
 
 
-@app.post("/ask")
+@app.post("/ask", response_model=SupportResponse)
 async def ask_question(data: dict = Body(...)):
     try:
         validate(

@@ -16,8 +16,8 @@ def test_valid_question():
 
     assert response.status_code == 200
     assert "answer" in response.json()
-    assert "source" in response.json()
-
+    assert "sources" in response.json()
+    assert "confidence" in response.json()
 
 def test_unknown_question():
     response = client.post(
@@ -28,9 +28,8 @@ def test_unknown_question():
     )
 
     assert response.status_code == 200
-    assert response.json()["source"] == ""
-
-
+    assert response.json()["sources"] == []
+    assert response.json()["confidence"] == 0.0
 def test_missing_question():
     response = client.post(
         "/ask",

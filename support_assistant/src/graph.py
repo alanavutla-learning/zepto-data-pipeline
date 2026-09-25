@@ -1,134 +1,105 @@
-import json
-from pathlib import Path
+import os
 from typing import TypedDict
+
 from langgraph.graph import StateGraph, START, END
-from jsonschema import validate
 
+from .intent import classify_intent
 from .retriever import search_documents
+from .schemas import SupportResponse
+from .generator import generate_answer
 
-SCHEMA_PATH = (
-    Path(__file__).resolve().parent.parent
-    / "schema"
-    / "response_schema.json"
-)
 
-with open(SCHEMA_PATH, "r", encoding="utf-8") as file:
-    RESPONSE_SCHEMA = json.load(file)
-
-class SupportState(TypedDict):
+class SupportState(TypedDict, total=False):
     question: str
+    intent: str
     retrieved_documents: list
     response: dict
-def retrieve_node(state: SupportState):
-    results = search_documents(
-        state["question"],
-        top_k=3,
-    )
+
+
+def classify_intent_node(state: SupportState):
+    intent = classify_intent(state["question"])
+    return {"intent": intent}
+
+
+def retrieve_and_answer(state: SupportState):
+    results = search_documents(state["question"], top_k=3)
 
     documents = []
 
     for i, document in enumerate(results["documents"][0]):
         source = results["metadatas"][0][i]["source"]
+        distance = results["distances"][0][i]
 
         documents.append(
             {
                 "source": source,
                 "content": document,
-                "distance": results["distances"][0][i],
+                "distance": distance,
             }
         )
 
+    if not documents:
+        return {
+            "retrieved_documents": [],
+           "response": SupportResponse(
+                            answer="Based on the retrieved context: No relevant policy information was found.",
+                            sources=[],
+                            confidence=0.0,
+                            ).model_dump(),       }
+
+    top_document = documents[0]
+
+    answer = generate_answer(
+    state["question"],
+    top_document["content"],
+    )
+
     return {
-        "retrieved_documents": documents
+        "retrieved_documents": documents,
+        "response": {
+            "answer": answer,
+            "sources": [top_document["source"]],
+            "confidence": 1.0,
+        },
     }
 
 
-def answer_node(state: SupportState):
-    documents = state["retrieved_documents"]
-
-    if not documents:
-        response = {
-            "answer": "I don't have enough information in the available policy documents.",
-            "source": "",
-        }
-
-        validate(instance=response, schema=RESPONSE_SCHEMA)
-
-        return {"response": response}
-
-    answer = documents[0]["content"]
-    source = documents[0]["source"]
-
-    response = {
-        "answer": answer,
-        "source": source,
+def direct_answer(state: SupportState):
+    return {
+        "response": SupportResponse(
+            answer="I can help with Zepto support questions, but this question is outside the available policy topics.",
+            sources=[],
+            confidence=0.0,
+        ).model_dump(),
     }
 
-    validate(instance=response, schema=RESPONSE_SCHEMA)
 
-    return {"response": response}
+def route_by_intent(state: SupportState):
+    if state["intent"] == "policy_question":
+        return "retrieve_and_answer"
 
-def route_after_retrieval(state: SupportState):
-    documents = state["retrieved_documents"]
+    return "direct_answer"
 
-    if not documents:
-        return "fallback"
 
-    distance = documents[0]["distance"]
-
-    if distance <= 1.4:
-        return "answer"
-
-    return "fallback"
-
-def fallback_node(state: SupportState):
-    response = {
-        "answer": (
-            "I don't have enough information in the available "
-            "policy documents to answer this question."
-        ),
-        "source": "",
-    }
-
-    validate(instance=response, schema=RESPONSE_SCHEMA)
-
-    return {"response": response}
 def build_graph():
     graph = StateGraph(SupportState)
 
-    graph.add_node("retrieve", retrieve_node)
-    graph.add_node("answer", answer_node)
-    graph.add_node("fallback", fallback_node)
+    graph.add_node("classify_intent", classify_intent_node)
+    graph.add_node("retrieve_and_answer", retrieve_and_answer)
+    graph.add_node("direct_answer", direct_answer)
 
-    graph.add_edge(START, "retrieve")
+    graph.add_edge(START, "classify_intent")
 
     graph.add_conditional_edges(
-        "retrieve",
-        route_after_retrieval,
+        "classify_intent",
+        route_by_intent,
         {
-            "answer": "answer",
-            "fallback": "fallback",
+            "retrieve_and_answer": "retrieve_and_answer",
+            "direct_answer": "direct_answer",
         },
     )
 
-    graph.add_edge("answer", END)
-    graph.add_edge("fallback", END)
+    graph.add_edge("retrieve_and_answer", END)
+    graph.add_edge("direct_answer", END)
 
     return graph.compile()
-
-if __name__ == "__main__":
-    graph = build_graph()
-
-    result = graph.invoke(
-        {
-            "question": "What happens if my order arrives damaged?",
-            "retrieved_documents": [],
-            "response": {},
-        }
-    )
-
-    print("Question:")
-    print(result["question"])
-
-    print("\nResponse:")
-    print(result["response"])

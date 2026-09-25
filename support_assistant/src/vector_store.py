@@ -3,9 +3,8 @@ from pathlib import Path
 import chromadb
 from langchain_huggingface import HuggingFaceEmbeddings
 
-from loader import load_documents
-from splitter import split_documents
-
+from .loader import load_documents
+from .splitter import split_documents
 
 CHROMA_DIR = Path(__file__).resolve().parent.parent / "data" / "chroma"
 
